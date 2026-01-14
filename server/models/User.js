@@ -6,6 +6,8 @@ const userSchema =new mongoose.Schema({
     password: {type: String, required: true, minlength:6},
     profilePic: {type: String, default:""},
     bio: {type: String},
+     // ✅ NEW (for last seen)
+  lastSeen: { type: Date, default: Date.now },
 }, {timestamps:true});
 
 const User = mongoose.models.User || mongoose.model("User", userSchema);

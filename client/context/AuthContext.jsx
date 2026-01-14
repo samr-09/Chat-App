@@ -2,6 +2,7 @@ import { createContext, useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
+import { useNavigate } from "react-router-dom";
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
@@ -13,20 +14,24 @@ export const AuthProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [socket, setSocket] = useState(null);
 
-  // ✅ axios config ONLY ONCE
+  // ✅ NEW STATES
+  const [typingUsers, setTypingUsers] = useState({}); // { userId: true }
+
+  const navigate = useNavigate();
+
+  // axios base config
   axios.defaults.baseURL = backendUrl;
 
   // ================= AUTH CHECK =================
   const checkAuth = async () => {
     try {
       const { data } = await axios.get("/api/auth/check");
-
       if (data.success) {
         setAuthUser(data.user);
         connectSocket(data.user);
       }
-    } catch (error) {
-      // ❌ NO toast here (landing-safe, silent fail)
+    } catch {
+      // silent fail (landing safe)
     }
   };
 
@@ -37,12 +42,12 @@ export const AuthProvider = ({ children }) => {
 
       if (data.success) {
         setAuthUser(data.userData);
-        connectSocket(data.userData);
 
         axios.defaults.headers.common["token"] = data.token;
         localStorage.setItem("token", data.token);
         setToken(data.token);
 
+        connectSocket(data.userData);
         toast.success(data.message);
       } else {
         toast.error(data.message);
@@ -59,6 +64,7 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setAuthUser(null);
     setOnlineUsers([]);
+    setTypingUsers({});
 
     delete axios.defaults.headers.common["token"];
 
@@ -66,6 +72,7 @@ export const AuthProvider = ({ children }) => {
     setSocket(null);
 
     toast.success("Logged out successfully");
+    navigate("/"); // ✅ landing
   };
 
   // ================= UPDATE PROFILE =================
@@ -79,7 +86,6 @@ export const AuthProvider = ({ children }) => {
       } else {
         toast.error(data.message || "Update failed");
       }
-
       return data;
     } catch (error) {
       toast.error(error.message);
@@ -87,44 +93,59 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ================= SOCKET =================
+  // ================= SOCKET (VERCEL SAFE) =================
   const connectSocket = (userData) => {
     if (!userData || socket?.connected) return;
 
     const newSocket = io(backendUrl, {
+      path: "/socket.io",
+      transports: ["websocket"],
       query: { userId: userData._id },
     });
 
-    newSocket.connect();
     setSocket(newSocket);
 
+    // online users
     newSocket.on("getOnlineUsers", (userIds) => {
       setOnlineUsers(userIds);
     });
+
+    // typing indicator
+    newSocket.on("typing", ({ from }) => {
+      setTypingUsers((prev) => ({ ...prev, [from]: true }));
+    });
+
+    newSocket.on("stopTyping", ({ from }) => {
+      setTypingUsers((prev) => ({ ...prev, [from]: false }));
+    });
+
+    newSocket.on("disconnect", () => {
+      setOnlineUsers([]);
+      setTypingUsers({});
+    });
   };
 
-  // ================= EFFECT (CRITICAL FIX) =================
+  // ================= EFFECT =================
   useEffect(() => {
-    // 🚫 NO TOKEN → NO AUTH CHECK → NO BACKEND HIT
     if (!token) return;
-
     axios.defaults.headers.common["token"] = token;
     checkAuth();
   }, [token]);
 
   // ================= CONTEXT VALUE =================
-  const value = {
-    axios,
-    authUser,
-    onlineUsers,
-    socket,
-    login,
-    logout,
-    updateProfile,
-  };
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider
+      value={{
+        axios,
+        authUser,
+        onlineUsers,
+        typingUsers,   // ✅ exposed
+        socket,
+        login,
+        logout,
+        updateProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

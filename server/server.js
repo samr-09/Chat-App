@@ -1,65 +1,92 @@
 import express from "express";
 import "dotenv/config";
-import cors from"cors";
+import cors from "cors";
 import http from "http";
 import { connectDB } from "./lib/db.js";
 import userRouter from "./routes/userRoutes.js";
 import messageRouter from "./routes/messageRouter.js";
 import { Server } from "socket.io";
-
-//create express app and HTTP server
+import User from "./models/User.js";
 
 const app = express();
-const server = http.createServer(app)
+const server = http.createServer(app);
 
+// ================= SOCKET.IO (VERCEL SAFE) =================
+export const io = new Server(server, {
+  path: "/socket.io",
+  cors: { origin: "*" },
+  transports: ["websocket"],
+});
 
-//initialize socket.io server
+// store online users
+export const userSocketMap = {}; // { userId: socketId }
 
-export const io=new Server(server, {
-    cors: {origin:"*"}
+io.on("connection", (socket) => {
+  const userId = socket.handshake.query.userId;
 
-})
- 
-//store online users
+  // guard
+  if (!userId) {
+    socket.disconnect(true);
+    return;
+  }
 
-export const userSocketMap= {};//{userId: socketId}
+  // mark user online
+  userSocketMap[userId] = socket.id;
 
-//socket.io connection handler
+  // broadcast online users
+  io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-io.on("connection", (socket)=>{
-    const userId= socket.handshake.query.userId;
-    console.log("user connected", userId);
+  // ================= TYPING INDICATOR =================
+  socket.on("typing", ({ to }) => {
+    const receiverSocketId = userSocketMap[to];
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("typing", { from: userId });
+    }
+  });
 
-    if (userId) userSocketMap[userId]= socket.id ;
+  socket.on("stopTyping", ({ to }) => {
+    const receiverSocketId = userSocketMap[to];
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("stopTyping", { from: userId });
+    }
+  });
 
-    //emit online users to all connected client    
+  // ================= DISCONNECT =================
+  socket.on("disconnect", async () => {
+    delete userSocketMap[userId];
+
+    // update last seen
+    try {
+      await User.findByIdAndUpdate(userId, {
+        lastSeen: new Date(),
+      });
+    } catch (err) {
+      console.log("Last seen update failed:", err.message);
+    }
+
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  });
+});
 
-    socket.on("disconnect", ()=>{
-        console.log("user disconnected", userId);
-        delete userSocketMap[userId];
-        io.emit("getOnlineUsers", Object.keys(userSocketMap));
-        
-    })
-})
+// ================= MIDDLEWARE =================
+app.use(express.json({ limit: "4mb" }));
+app.use(cors());
 
-//middleware setup
-
-app.use(express.json({limit: "4mb"}));
-app.use (cors());
-
-//routes setup
-app.use("/api/status", (req, res)=> res.send("Server is live"));
+// ================= ROUTES =================
+app.use("/api/status", (req, res) => res.send("Server is live"));
 app.use("/api/auth", userRouter);
 app.use("/api/messages", messageRouter);
-//connect to MongoDB
 
+// ================= DB =================
 await connectDB();
 
-if (process.env.NODE_ENV!=="production"){
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, ()=> console.log("Server Running on PORT:" + PORT));
+// ================= SERVER =================
+if (process.env.NODE_ENV !== "production") {
+  const PORT = process.env.PORT || 5000;
+  server.listen(PORT, () =>
+    console.log("Server Running on PORT:" + PORT)
+  );
 }
 
-//export server for vercel
+// export for vercel
 export default server;
