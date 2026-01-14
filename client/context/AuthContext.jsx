@@ -2,21 +2,19 @@ import { createContext, useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
-import { useLocation } from "react-router-dom";
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-axios.defaults.baseURL = backendUrl;
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const location = useLocation();
-
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [authUser, setAuthUser] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [socket, setSocket] = useState(null);
+
+  // ✅ axios config ONLY ONCE
+  axios.defaults.baseURL = backendUrl;
 
   // ================= AUTH CHECK =================
   const checkAuth = async () => {
@@ -28,7 +26,7 @@ export const AuthProvider = ({ children }) => {
         connectSocket(data.user);
       }
     } catch (error) {
-      // silent fail (landing page / no token case)
+      // ❌ NO toast here (landing-safe, silent fail)
     }
   };
 
@@ -42,8 +40,8 @@ export const AuthProvider = ({ children }) => {
         connectSocket(data.userData);
 
         axios.defaults.headers.common["token"] = data.token;
-        setToken(data.token);
         localStorage.setItem("token", data.token);
+        setToken(data.token);
 
         toast.success(data.message);
       } else {
@@ -55,14 +53,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ================= LOGOUT =================
-  const logout = async () => {
+  const logout = () => {
     localStorage.removeItem("token");
 
     setToken(null);
     setAuthUser(null);
     setOnlineUsers([]);
 
-    axios.defaults.headers.common["token"] = null;
+    delete axios.defaults.headers.common["token"];
 
     socket?.disconnect();
     setSocket(null);
@@ -79,7 +77,7 @@ export const AuthProvider = ({ children }) => {
         setAuthUser(data.user);
         toast.success("Profile updated successfully");
       } else {
-        toast.error(data.message || "Failed to update profile");
+        toast.error(data.message || "Update failed");
       }
 
       return data;
@@ -94,9 +92,7 @@ export const AuthProvider = ({ children }) => {
     if (!userData || socket?.connected) return;
 
     const newSocket = io(backendUrl, {
-      query: {
-        userId: userData._id,
-      },
+      query: { userId: userData._id },
     });
 
     newSocket.connect();
@@ -107,17 +103,14 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
-  // ================= EFFECT =================
+  // ================= EFFECT (CRITICAL FIX) =================
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common["token"] = token;
-    }
+    // 🚫 NO TOKEN → NO AUTH CHECK → NO BACKEND HIT
+    if (!token) return;
 
-    // 🚫 Landing page → no auth API call
-    if (location.pathname === "/") return;
-
+    axios.defaults.headers.common["token"] = token;
     checkAuth();
-  }, [location.pathname]);
+  }, [token]);
 
   // ================= CONTEXT VALUE =================
   const value = {
