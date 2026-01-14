@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import logo from "../assets/favicon.svg";
+
 
 const Landing = () => {
   return (
@@ -19,10 +21,11 @@ const Landing = () => {
           <div className="max-w-7xl mx-auto px-8 py-4 flex justify-between items-center">
             <div className="flex items-center gap-3">
   <img
-    src="/src/assets/favicon.svg"
-    alt="QuickChat logo"
-    className="w-8 h-8"
-  />
+  src={logo}
+  alt="QuickChat logo"
+  className="w-8 h-8"
+/>
+
   <span className="text-2xl font-bold tracking-tight">
     QuickChat
   </span>
