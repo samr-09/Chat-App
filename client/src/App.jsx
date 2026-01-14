@@ -17,39 +17,57 @@ const App = () => {
       <Toaster />
 
       <Routes>
-        {/* 🌍 Landing Page (NO background wrapper) */}
+
+        {/* 🌍 Landing Page */}
         <Route path="/" element={<Landing />} />
 
-        {/* 🔐 All other pages keep OLD pattern */}
+        {/* 🔐 App Wrapper (OLD pattern preserved) */}
         <Route
           path="/*"
           element={
             <div className="bg-[url('/bgImage.svg')] bg-contain min-h-screen">
+
               <Routes>
+
                 <Route
                   path="login"
                   element={
-                    !authUser ? <LoginPage /> : <Navigate to="/" />
+                    !authUser ? (
+                      <LoginPage />
+                    ) : (
+                      <Navigate to="/chat" />
+                    )
                   }
                 />
 
                 <Route
                   path="chat"
                   element={
-                    authUser ? <HomePage /> : <Navigate to="/login" />
+                    authUser ? (
+                      <HomePage />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
                   }
                 />
 
                 <Route
                   path="profile"
                   element={
-                    authUser ? <ProfilePage /> : <Navigate to="/login" />
+                    authUser ? (
+                      <ProfilePage />
+                    ) : (
+                      <Navigate to="/login" />
+                    )
                   }
                 />
+
               </Routes>
+
             </div>
           }
         />
+
       </Routes>
     </>
   );
